@@ -1,0 +1,63 @@
+---
+- name: Download release zabbix
+  get_url:
+    url: https://repo.zabbix.com/zabbix/6.4/ubuntu/pool/main/z/zabbix-release/zabbix-release_6.4-1+ubuntu22.04_all.deb
+    dest: /tmp/zabbix-release.deb
+
+- name: Install a .deb package
+  apt:
+    deb: /tmp/zabbix-release.deb
+
+- name: Update package cache
+  apt:
+    update_cache: yes
+
+- name: Install zabbix packages
+  apt:
+    name:
+      - zabbix-server-mysql
+      - zabbix-frontend-php
+      - zabbix-nginx-conf
+      - zabbix-sql-scripts
+      - zabbix-agent
+
+- name: Create database
+  shell: mysql -uroot -proot -e "create database zabbix character set utf8mb4 collate utf8mb4_bin"
+  ignore_errors: true
+
+- name: Create user
+  shell: mysql -uroot -proot -e "create user zabbix@localhost identified by 'password'"
+  ignore_errors: true
+
+- name: Grant all privileges
+  shell: mysql -uroot -proot -e "grant all privileges on zabbix.* to zabbix@localhost"
+  ignore_errors: true
+
+- name: Set global log_bin_trust_function_creators
+  shell: mysql -uroot -proot -e "set global log_bin_trust_function_creators = 1"
+  ignore_errors: true
+
+- name: Import database
+  shell: zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -uzabbix -ppassword zabbix
+  ignore_errors: true
+
+- name: Copy zabbix-server.conf
+  template:
+    src: zabbix_server.conf.j2
+    dest: /etc/zabbix/zabbix_server.conf
+
+- name: Copy nginx.conf
+  template:
+    src: nginx.conf.j2
+    dest: /etc/zabbix/nginx.conf
+
+- name: Restart services
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+  loop:
+    - zabbix-server
+    - zabbix-agent
+    - nginx
+    - php8.1-fpm
